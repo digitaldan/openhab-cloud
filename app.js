@@ -95,7 +95,7 @@ require('mongoose-cache').install(mongoose, cacheOpts);
 var mongoUri = 'mongodb://' +
 (config.mongodb.user && config.mongodb.user.length > 0 ?
   ( config.mongodb.user + ':' + config.mongodb.password + '@') : + "");
-  
+
 for (host in config.mongodb.hosts) {
     mongoUri += config.mongodb.hosts[host];
     if (host < config.mongodb.hosts.length - 1) {
@@ -240,6 +240,7 @@ app.configure(function(){
     app.use(express.cookieParser(config.express.key));
     app.use(express.session({
         secret: config.express.key,
+        cookie: { domain:'.' + config.system.baseurl},
         store: new RedisStore({ host: 'localhost', port: 6379, client: redis, logErrors:true })
     }));
     app.use(flash());
