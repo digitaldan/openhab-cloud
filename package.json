@@ -45,7 +45,7 @@
         "memwatch": "0.2.2",
         "heapdump": "0.3.7",
         "socket.io-redis": "1.0.0",
-        "mongoose-cache": "0.1.4",
+        "mongoose-cache": "git+https://github.com/digitaldan/mongoose-cache.git",
         "ratelimiter":"2.1.3",
         "express-session":"1.14.1"
     }
