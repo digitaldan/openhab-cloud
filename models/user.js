@@ -1,3 +1,5 @@
+var cacheTime = 60 * 10;
+
 var mongoose = require('mongoose'),
     Schema = mongoose.Schema,
      bcrypt = require('bcrypt'),
@@ -77,7 +79,7 @@ UserSchema.static('registerToAccount', function(username, password, account, rol
 });
 
 UserSchema.static('authenticate', function (username, password, callback) {
-    this.findOne({ username: username }).cache().exec(function(err, user) {
+    this.findOne({ username: username }).cache(cacheTime).exec(function(err, user) {
         if (err)
             return callback(err, false, {message: 'Authentication error'});
         if (!user)
@@ -95,7 +97,7 @@ UserSchema.static('authenticate', function (username, password, callback) {
 });
 
 UserSchema.methods.openhab = function(callback) {
-    Openhab.findOne({account: this.account}).cache().exec(callback);
+    Openhab.findOne({account: this.account}).cache(cacheTime).exec(callback);
 }
 
 UserSchema.index({account:1, role:1});

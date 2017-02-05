@@ -159,11 +159,19 @@ exports.accountpost = function(req, res) {
     } else {
         req.user.openhab(function(error, openhab) {
             if (!error && openhab) {
+                var query = this;
                 openhab.uuid = req.body.openhabuuid;
                 openhab.secret = req.body.openhabsecret;
-                openhab.save();
-                req.flash('info', 'openHAB settings successfully updated');
-                res.redirect('/account');
+                openhab.save(function(error) {
+                  if (error) {
+                    logger.error("openHAB-cloud: Error saving openhab: " + error);
+                    req.flash('error', 'openHAB settings could not be saved');
+                  } else {
+                    app.cachegoose.clearCache(query.getCacheKey());
+                    req.flash('info', 'openHAB settings successfully updated');
+                  }
+                  res.redirect('/account');
+                });
             }
         });
     }

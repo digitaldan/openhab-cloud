@@ -81,21 +81,25 @@ var gcmSender = require('./gcmsender.js');
 var form = require('express-form'),
     field = form.field;
 
-// MongoDB connection settings
 var mongoose = require('mongoose');
-var cacheOpts = {
-    max:5000,
-    maxAge:1000*60*10
-};
+var cachegoose = require('cachegoose');
+
+var cacheTime = 60 * 10; // 10 mins
+
+cachegoose(mongoose, {
+  engine: 'redis',                  /* If you don't specify the redis engine,      */
+  port: config.redis.port,         /* the query results will be cached in memory. */
+  host: config.redis.host,
+  password: config.redis.password
+});
 
 var ObjectId = mongoose.SchemaTypes.ObjectId;
 
-require('mongoose-cache').install(mongoose, cacheOpts);
 
 var mongoUri = 'mongodb://' +
 ((config.mongodb.user && config.mongodb.user.length > 0) ?
   config.mongodb.user + ':' + config.mongodb.password + '@' : "");
-  
+
 for (host in config.mongodb.hosts) {
     mongoUri += config.mongodb.hosts[host];
     if (host < config.mongodb.hosts.length - 1) {
@@ -147,7 +151,7 @@ if (taskEnv == 'main') {
         	// logger.debug(Date.now() - offlineOpenhabs[offlineOpenhabUuid]);
             if (Date.now() - offlineOpenhabs[offlineOpenhabUuid] > 5 * 60 * 1000) {
                 logger.debug("openHAB-cloud: openHAB with "+offlineOpenhabUuid + " is offline > 300 sec, time to notify the owner");
-                Openhab.findOne({uuid: offlineOpenhabUuid}).cache().exec(function (error, openhab) {
+                Openhab.findOne({uuid: offlineOpenhabUuid}).cache(cacheTime).exec(function (error, openhab) {
                     if (openhab && !error) {
                         openhab.status = 'offline';
                         openhab.last_online = new Date;
@@ -1146,11 +1150,11 @@ io.sockets.on('connection',function(socket){
           var itemStatus = data.itemStatus;
           // Find openhab
           if (itemStatus.length < 100) {
-              Openhab.findById(self.openhabId).cache().exec(function(error, openhab) {
+              Openhab.findById(self.openhabId).cache(cacheTime).exec(function(error, openhab) {
             	  // self.to(self.handshake.uuid).emit('itemupdate', data);
                   if (!error && openhab) {
                       // Find the item (which should belong to this openhab)
-                      Item.findOne({openhab: openhab.id, name: itemName}).cache().exec(function(error, itemToUpdate) {
+                      Item.findOne({openhab: openhab.id, name: itemName}).cache(cacheTime).exec(function(error, itemToUpdate) {
                           if (!error) {
                               // If no item found for this openhab with this name, create a new one
                               if (!itemToUpdate) {
