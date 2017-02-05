@@ -167,7 +167,7 @@ exports.accountpost = function(req, res) {
                     logger.error("openHAB-cloud: Error saving openhab: " + error);
                     req.flash('error', 'openHAB settings could not be saved');
                   } else {
-                    app.cachegoose.clearCache(query.getCacheKey());
+                    
                     req.flash('info', 'openHAB settings successfully updated');
                   }
                   res.redirect('/account');
