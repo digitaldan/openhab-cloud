@@ -71,7 +71,8 @@ var flash = require('connect-flash')
     , cronJob = require('cron').CronJob
     , appleSender = require('./aps-helper')
     , oauth2 = require('./oauth2')
-    , Limiter = require('ratelimiter');
+    , Limiter = require('ratelimiter')
+    , UUID = require('uuid');
 
 
 // Setup Google Cloud Messaging component
@@ -125,9 +126,6 @@ var mongooseTypes = require("mongoose-types");
 mongooseTypes.loadTypes(mongoose);
 
 var app = express();
-
-// A request counter for issuing a uniqe ID to every request when sending them to openHABs
-var requestCounter = 0;
 
 // A list of requests which are awaiting for responses from openHABs
 var restRequests = {};
@@ -557,11 +555,7 @@ function proxyRouteOpenhab(req, res) {
         res.end('openHAB is offline');
         return;
     }
-
-    // TODO: migrate this to redis incr?
-    // increment request id and fix it
-    requestCounter++;
-    var requestId = requestCounter;
+    var requestId = UUID.v4();
     // make a local copy of request headers to modify
     var requestHeaders =  req.headers;
     // get remote hose from either x-forwarded-for or request
