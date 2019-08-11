@@ -8,6 +8,8 @@ var Item = require('../models/item');
 var Event = require('../models/event');
 var app = require('../app');
 var system = require('../system');
+var redis = require('../redis-helper');
+var logger = require('../logger');
 
 // IFTTT openHAB channel key
 var iftttChannelKey = app.config.ifttt.iftttChannelKey
@@ -193,41 +195,63 @@ exports.v1triggeritemstate = [
             } else {
                 var itemName = req.body.triggerFields.item;
                 var itemStatus = req.body.triggerFields.status;
-                Item.findOne({openhab: openhab._id, name: itemName}, function (error, item) {
-                    if (!error && item) {
-                        if (eventLimit > 0) {
-                            Event.find({openhab: openhab._id, source: item.name, status: itemStatus})
-                                .sort({when: 'desc'})
-                                .limit(eventLimit)
-				.lean()
-                                .exec(function (error, events) {
-                                    if (!error) {
-                                        var responseData = [];
-                                        for (var i = 0; i < events.length; i++) {
-                                            var newEvent = {};
-                                            newEvent.item = itemName;
-                                            newEvent.status = itemStatus;
-                                            newEvent.created_at = events[i].when;
-					    var edt = new Date(events[i].when);
-                                            newEvent.meta = {
-                                                id: events[i]._id,
-                                                timestamp: Math.round(edt.getTime() / 1000)
-                                            };
-                                            responseData.push(newEvent);
-                                        }
-                                        return res.json({data: responseData});
-                                    } else {
-                                        return res.status(400).json({errors: [{message: "Error retrieving events"}]});
-                                    }
-                                });
-                        } else {
-                            var responseData = [];
-                            return res.json({data: responseData});
+                var key = "events:" + openhab.id + ":" + itemName;
+                var responseData = [];
+                redis.lrange(key , 0, -1, function(err, reply) {
+                    reply.forEach(function(e){
+                        var event = JSON.parse(e);
+                        logger.debug(`Checking if ${event.status} == ${itemStatus}`)
+                        if(event.status === itemStatus){
+                            var newEvent = {};
+                            newEvent.item = itemName;
+                            newEvent.status = itemStatus;
+                            newEvent.created_at = event.when;
+                            var edt = new Date(event.when);
+                            newEvent.meta = {
+                                id: key,
+                                timestamp: Math.round(edt.getTime() / 1000)
+                            };
+                            logger.debug(`Adding ${JSON.stringify(newEvent)} to return list`)
+                            responseData.push(newEvent);
                         }
-                    } else {
-                        return res.status(400).json({errors: [{message: "No item"}]});
-                    }
+                    });
                 });
+                return res.json({data: responseData});
+                // Item.findOne({openhab: openhab._id, name: itemName}, function (error, item) {
+                //     if (!error && item) {
+                //         if (eventLimit > 0) {
+                //             Event.find({openhab: openhab._id, source: item.name, status: itemStatus})
+                //                 .sort({when: 'desc'})
+                //                 .limit(eventLimit)
+				// .lean()
+                //                 .exec(function (error, events) {
+                //                     if (!error) {
+                //                         var responseData = [];
+                //                         for (var i = 0; i < events.length; i++) {
+                //                             var newEvent = {};
+                //                             newEvent.item = itemName;
+                //                             newEvent.status = itemStatus;
+                //                             newEvent.created_at = events[i].when;
+				// 	    var edt = new Date(events[i].when);
+                //                             newEvent.meta = {
+                //                                 id: events[i]._id,
+                //                                 timestamp: Math.round(edt.getTime() / 1000)
+                //                             };
+                //                             responseData.push(newEvent);
+                //                         }
+                //                         return res.json({data: responseData});
+                //                     } else {
+                //                         return res.status(400).json({errors: [{message: "Error retrieving events"}]});
+                //                     }
+                //                 });
+                //         } else {
+                //             var responseData = [];
+                //             return res.json({data: responseData});
+                //         }
+                    // } else {
+                    //     return res.status(400).json({errors: [{message: "No item"}]});
+                    // }
+                // });
             }
         });
     }
@@ -249,44 +273,70 @@ exports.v1triggeritem_raised_above = [
             } else {
                 var itemName = req.body.triggerFields.item;
                 var value = req.body.triggerFields.value;
-                Item.findOne({openhab: openhab._id, name: itemName}, function (error, item) {
-                    if (!error && item) {
-                        if (eventLimit > 0) {
-//                            console.log(value);
-                            Event.find({openhab: openhab._id, source: item.name})
-                                .where('numericStatus').gt(value)
-                                .where('oldNumericStatus').lte(value)
-                                .sort({when: 'desc'})
-                                .limit(eventLimit)
-				.lean()
-                                .exec(function (error, events) {
-                                    if (!error) {
-                                        var responseData = [];
-                                        for (var i = 0; i < events.length; i++) {
-                                            var newEvent = {};
-                                            newEvent.item = itemName;
-                                            newEvent.status = events[i].status;
-                                            newEvent.created_at = events[i].when;
-					    var edt = new Date(events[i].when);
-                                            newEvent.meta = {
-                                                id: events[i]._id,
-                                                timestamp: Math.round(edt.getTime() / 1000)
-                                            };
-                                            responseData.push(newEvent);
-                                        }
-                                        return res.json({data: responseData});
-                                    } else {
-                                        return res.status(400).json({errors: [{message: error}]});
-                                    }
-                                });
-                        } else {
-                            var responseData = [];
-                            return res.json({data: responseData});
+               
+               
+                var key = "events:" + openhab.id + ":" + itemName;
+                var responseData = [];
+                redis.lrange(key , 0, -1, function(err, reply) {
+                    reply.forEach(function(e){
+                        var event = JSON.parse(e);
+                        logger.debug(`Checking if ${event.numericStatus} > ${value} && ${event.oldNumericStatus} > ${value}`);
+                        if(event.numericStatus > value && event.oldNumericStatus < value){
+                            var newEvent = {};
+                            newEvent.item = itemName;
+                            newEvent.status = event.status;
+                            newEvent.created_at = event.when;
+                            var edt = new Date(event.when);
+                            newEvent.meta = {
+                                id: key,
+                                timestamp: Math.round(edt.getTime() / 1000)
+                            };
+                            logger.debug(`Adding ${JSON.stringify(newEvent)} to return list`)
+                            responseData.push(newEvent);
                         }
-                    } else {
-                        return res.status(400).json({errors: [{message: "No item"}]});
-                    }
+                    });
                 });
+
+                return res.json({data: responseData});
+               
+//                 Item.findOne({openhab: openhab._id, name: itemName}, function (error, item) {
+//                     if (!error && item) {
+//                         if (eventLimit > 0) {
+// //                            console.log(value);
+//                             Event.find({openhab: openhab._id, source: item.name})
+//                                 .where('numericStatus').gt(value)
+//                                 .where('oldNumericStatus').lte(value)
+//                                 .sort({when: 'desc'})
+//                                 .limit(eventLimit)
+// 				.lean()
+//                                 .exec(function (error, events) {
+//                                     if (!error) {
+//                                         var responseData = [];
+//                                         for (var i = 0; i < events.length; i++) {
+//                                             var newEvent = {};
+//                                             newEvent.item = itemName;
+//                                             newEvent.status = events[i].status;
+//                                             newEvent.created_at = events[i].when;
+// 					    var edt = new Date(events[i].when);
+//                                             newEvent.meta = {
+//                                                 id: events[i]._id,
+//                                                 timestamp: Math.round(edt.getTime() / 1000)
+//                                             };
+//                                             responseData.push(newEvent);
+//                                         }
+//                                         return res.json({data: responseData});
+//                                     } else {
+//                                         return res.status(400).json({errors: [{message: error}]});
+//                                     }
+//                                 });
+//                         } else {
+//                             var responseData = [];
+//                             return res.json({data: responseData});
+//                         }
+//                     } else {
+//                         return res.status(400).json({errors: [{message: "No item"}]});
+//                     }
+//                 });
             }
         });
     }
@@ -308,44 +358,69 @@ exports.v1triggeritem_dropped_below = [
             } else {
                 var itemName = req.body.triggerFields.item;
                 var value = req.body.triggerFields.value;
-                Item.findOne({openhab: openhab._id, name: itemName}, function (error, item) {
-                    if (!error && item) {
-                        if (eventLimit > 0) {
-//                            console.log(value);
-                            Event.find({openhab: openhab._id, source: item.name})
-                                .where('numericStatus').lt(value)
-                                .where('oldNumericStatus').gte(value)
-                                .sort({when: 'desc'})
-                                .limit(eventLimit)
-				.lean()
-                                .exec(function (error, events) {
-                                    if (!error) {
-                                        var responseData = [];
-                                        for (var i = 0; i < events.length; i++) {
-                                            var newEvent = {};
-                                            newEvent.item = itemName;
-                                            newEvent.status = events[i].status;
-                                            newEvent.created_at = events[i].when;
-					    var edt = new Date(events[i].when);
-                                            newEvent.meta = {
-                                                id: events[i]._id,
-                                                timestamp: Math.round(edt.getTime() / 1000)
-                                            };
-                                            responseData.push(newEvent);
-                                        }
-                                        return res.json({data: responseData});
-                                    } else {
-                                        return res.status(400).json({errors: [{message: error}]});
-                                    }
-                                });
-                        } else {
-                            var responseData = [];
-                            return res.json({data: responseData});
+
+                var key = "events:" + openhab.id + ":" + itemName;
+                var responseData = [];
+                redis.lrange(key , 0, -1, function(err, reply) {
+                    reply.forEach(function(e){
+                        var event = JSON.parse(e);
+                        logger.debug(`Checking if ${event.numericStatus} > ${value} && ${event.oldNumericStatus} < ${value}`)
+                        if(event.numericStatus < value && event.oldNumericStatus > value){
+                            var newEvent = {};
+                            newEvent.item = itemName;
+                            newEvent.status = event.status;
+                            newEvent.created_at = event.when;
+                            var edt = new Date(event.when);
+                            newEvent.meta = {
+                                id: key,
+                                timestamp: Math.round(edt.getTime() / 1000)
+                            };
+                            logger.debug(`Adding ${JSON.stringify(newEvent)} to return list`)
+                            responseData.push(newEvent);
                         }
-                    } else {
-                        return res.status(400).json({errors: [{message: "No item"}]});
-                    }
+                    });
                 });
+
+                return res.json({data: responseData});
+
+//                 Item.findOne({openhab: openhab._id, name: itemName}, function (error, item) {
+//                     if (!error && item) {
+//                         if (eventLimit > 0) {
+// //                            console.log(value);
+//                             Event.find({openhab: openhab._id, source: item.name})
+//                                 .where('numericStatus').lt(value)
+//                                 .where('oldNumericStatus').gte(value)
+//                                 .sort({when: 'desc'})
+//                                 .limit(eventLimit)
+// 				.lean()
+//                                 .exec(function (error, events) {
+//                                     if (!error) {
+//                                         var responseData = [];
+//                                         for (var i = 0; i < events.length; i++) {
+//                                             var newEvent = {};
+//                                             newEvent.item = itemName;
+//                                             newEvent.status = events[i].status;
+//                                             newEvent.created_at = events[i].when;
+// 					    var edt = new Date(events[i].when);
+//                                             newEvent.meta = {
+//                                                 id: events[i]._id,
+//                                                 timestamp: Math.round(edt.getTime() / 1000)
+//                                             };
+//                                             responseData.push(newEvent);
+//                                         }
+//                                         return res.json({data: responseData});
+//                                     } else {
+//                                         return res.status(400).json({errors: [{message: error}]});
+//                                     }
+//                                 });
+//                         } else {
+//                             var responseData = [];
+//                             return res.json({data: responseData});
+//                         }
+//                     } else {
+//                         return res.status(400).json({errors: [{message: "No item"}]});
+//                     }
+//                 });
             }
         });
     }
