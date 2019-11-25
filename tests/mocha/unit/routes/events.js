@@ -54,15 +54,6 @@ describe('Unit test Event routes', function () {
             eventRoute.eventsget(req, res);
             eventMock.verify();
         });
-
-        it('expect correct events value', function () {
-            var res = mockRes();
-            var req = {};
-            req.params = {'source' : 20};
-            req.user = userMock;
-            eventRoute.eventsvaluesget(req, res);
-            eventMock.verify();
-        });
     });
 });
 

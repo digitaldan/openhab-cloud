@@ -51,7 +51,6 @@ Routes.prototype.setupRoutes = function (app) {
     this.setupOAuthRoutes(app);
     this.setupIFTTTRoutes(app);
     this.setupTimezoneRoutes(app);
-    this.setupApiRoutes(app);
     this.setupStaffRoutes(app);
     this.setupProxyRoutes(app);
     this.setupAppRoutes(app);
@@ -208,10 +207,6 @@ Routes.prototype.setupIFTTTRoutes = function (app) {
 Routes.prototype.setupTimezoneRoutes = function (app) {
     // A route to set session timezone automatically detected in browser
     app.all('/setTimezone', setSessionTimezone);
-};
-
-Routes.prototype.setupApiRoutes = function (app) {
-    app.get('/api/events', this.ensureAuthenticated, events_routes.eventsvaluesget);
 };
 
 Routes.prototype.setupProxyRoutes = function (app) {

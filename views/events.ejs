@@ -14,7 +14,7 @@
         <div class="container">
             <%- include alerts.ejs %>
             <div class="row">
-                <aside class="span3" id="sidebar">
+                <!-- <aside class="span3" id="sidebar">
                     <nav id="subnav">
                         <ul>
                             <li class="active"><a href="/events">All</a></li>
@@ -22,14 +22,14 @@
                             <li ><a href="">Last week</a></li>
                         </ul>
                         <div class="littleShadow"></div>
-                    </nav>
+                    </nav> -->
                     <!-- <section id="widgetArea">
                         <div class="widget">
                             <h3> widget 1</h3>
                             <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque ut auctor lorem. Curabitur at lobortis nulla. Sed tincidunt, orci sit amet varius ornare,</p>
                         </div>
                     </section> -->
-                </aside>
+                <!-- </aside> -->
                 <div class="span9">
                     <table class="table table-hover">
                         <thead>
@@ -37,7 +37,7 @@
                         </thead>
                         <% for (var i=0; i<events.length; i++) { %>
                         <tr bgcolor="<% if (events[i].color == 'good') { %>#e0f0d5<% } else if (events[i].color == 'bad') { %>#f1dede<% } else { %>#daedf8<% } %>"><td><%= date_util(events[i].when, timeZone).calendar() %></td>
-                            <td><a href="/events?source=<%=events[i].source%>"><%= events[i].source %></a></td>
+                            <td><%= events[i].source %></td>
                             <td><%= events[i].status %></td>
                         </tr>
                         <% } %>

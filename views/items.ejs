@@ -14,7 +14,7 @@
             <div class="container">
                 <%- include alerts.ejs %>
                 <div class="row">
-                    <aside class="span3" id="sidebar">
+                    <!-- <aside class="span3" id="sidebar">
                         <nav id="subnav">
                             <ul>
                                 <li><a href="/items" class="active">By name</a></li>
@@ -22,21 +22,21 @@
                                 <li><a href="/items?sort=status">By status</a></li>
                             </ul>
                             <div class="littleShadow"></div>
-                        </nav>
+                        </nav> -->
 <!--                        <section id="widgetArea">
                             <div class="widget">
                                 <h3> widget 1</h3>
                                 <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque ut auctor lorem. Curabitur at lobortis nulla. Sed tincidunt, orci sit amet varius ornare,</p>
                             </div>
                         </section> -->
-                    </aside>
+                    <!-- </aside> -->
                     <div class="span9">
                         <table class="table table-hover table-striped">
                             <thead>
-                            <tr><th>Name</th><th>Status</th><th>Last update</th></tr>
+                            <tr><th>Item Name</th></tr>
                             </thead>
                             <% for (var i=0; i<items.length; i++) { %>
-                            <tr><td><a href="/events?source=<%=items[i].name%>"><%= items[i].name %></a></td><td><%= items[i].status %></td><td><%= date_util(items[i].last_update, timeZone).calendar() %></td></tr>
+                            <tr><td><a href="/events?source=<%=items[i].name%>"><%= items[i].name %></a></td></tr>
                             <% } %>
                         </table>
                     </div>

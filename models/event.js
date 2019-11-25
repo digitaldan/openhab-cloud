@@ -6,6 +6,9 @@ const goodColor = "#e0f0d5";
 const badColor = "#f1dede";
 const infoColor = "#daedf8";
 
+/**
+ * This class should be removed as we now store events in redis, not mongo
+ */
 var EventSchema = new Schema({
     openhab: ObjectId,
     source: String,

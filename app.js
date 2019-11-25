@@ -784,98 +784,43 @@ io.sockets.on('connection', function (socket) {
                         itemToUpdate = new Item({
                             openhab: openhab.id,
                             name: itemName,
-                            last_change: new Date,
-                            status: ''
+                            //last_change: new Date,
+                            //status: ''
                         });
-                    }
-                    // If item status changed, update item and create new item status change event
-                    if (itemToUpdate.status !== itemStatus) {
-                        // Update previous status value
-                        itemToUpdate.prev_status = itemToUpdate.status;
-                        // Set new status value
-                        itemToUpdate.status = itemStatus;
-                        // Set last update timestamp to current time
-                        itemToUpdate.last_update = new Date;
-                        // Save the updated item
                         itemToUpdate.save(function (error) {
                             if (error) {
                                 logger.error('openHAB-cloud: Error saving item: ' + error);
                             }
                         });
-
-                        var event = {
-                            status: itemStatus,
-                            oldStatus: itemToUpdate.prev_status,
-                            when: new Date
-                        }
-                        if (!isNaN(parseFloat(itemStatus))) {
-                            // This is silly, but we need to check if previous status was int or float
-                            if (!isNaN(parseFloat(itemToUpdate.prev_status))) {
-                                event.numericStatus = parseFloat(itemStatus);
-                                event.oldNumericStatus = parseFloat(itemToUpdate.prev_status);
-                            } else {
-                                event.numericStatus = parseFloat(itemStatus);
-                            }
-                        }
-                        var key = "events:" + self.openhabId + ":" + itemName;
-                        redis.multi()
-                        .rpush(key,JSON.stringify(event))
-                        .ltrim(key,0,19)
-                        .expire(key,1209600)
-                        .exec(function (error, replies) {
-                            if (error) {
-                                logger.error('openHAB-cloud: Error saving event: ' + error);
-                            }
-                        });
-                        // Check if the new state is int or float to store it to Number and create new item update event
-                        // if (!isNaN(parseFloat(itemStatus))) {
-                        //     // This is silly, but we need to check if previous status was int or float
-                        //     if (!isNaN(parseFloat(itemToUpdate.prev_status))) {
-                        //         Event.collection.insert({
-                        //             openhab: mongoose.Types.ObjectId(openhab.id),
-                        //             source: itemName,
-                        //             status: itemStatus,
-                        //             oldStatus: itemToUpdate.prev_status,
-                        //             numericStatus: parseFloat(itemStatus),
-                        //             oldNumericStatus: parseFloat(itemToUpdate.prev_status),
-                        //             color: 'info',
-                        //             when: new Date
-                        //         }, function (error) {
-                        //             if (error) {
-                        //                 logger.error('openHAB-cloud: Error saving event: ' + error);
-                        //             }
-                        //         });
-                        //     } else {
-                        //         Event.collection.insert({
-                        //             openhab: mongoose.Types.ObjectId(openhab.id),
-                        //             source: itemName,
-                        //             status: itemStatus,
-                        //             oldStatus: itemToUpdate.prev_status,
-                        //             numericStatus: parseFloat(itemStatus),
-                        //             color: 'info',
-                        //             when: new Date
-                        //         }, function (error) {
-                        //             if (error) {
-                        //                 logger.error('openHAB-cloud: Error saving event: ' + error);
-                        //             }
-                        //         });
-                        //     }
-                        // } else {
-                        //     Event.collection.insert({
-                        //         openhab: mongoose.Types.ObjectId(openhab.id),
-                        //         source: itemName,
-                        //         status: itemStatus,
-                        //         oldStatus: itemToUpdate.prev_status,
-                        //         color: 'info',
-                        //         when: new Date
-                        //     }, function (error) {
-                        //         if (error) {
-                        //             logger.error('openHAB-cloud: Error saving event: ' + error);
-                        //         }
-                        //     });
-                        // }
-                        // Thus if item status didn't change, there will be no event...
                     }
+                    var event = {
+                        status: itemStatus,
+                        numericStatus: parseFloat(itemStatus),
+                        when: new Date
+                    }
+                    var key = "events:" + self.openhabId + ":" + itemName;
+                    redis.lindex(key ,0, function(err, e) {
+                        if(err){
+                            logger.error('openHAB-cloud: Error querying redis: ' + error);
+                        } else {
+                            var prevStatus;
+                            try {
+                                prevStatus = JSON.parse(e);
+                            } catch (ignored) {
+                            }
+                            if(!prevStatus || prevStatus.status !== event.status){
+                                redis.multi()
+                                .lpush(key,JSON.stringify(event))
+                                .ltrim(key,0,19)
+                                .expire(key,1209600)
+                                .exec(function (error, replies) {
+                                    if (error) {
+                                        logger.error('openHAB-cloud: Error saving event: ' + error);
+                                    }
+                                });
+                            }
+                        }
+                    });
                 });
             });
         });

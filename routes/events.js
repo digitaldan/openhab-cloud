@@ -10,7 +10,6 @@ exports.eventsget = function(req, res) {
         page = req.query.page > 0 ? parseInt(req.query.page) : 0;
     req.user.openhab(function(error, openhab) {
         if (!error && openhab != null) {
-           
             if(req.query.source){
                 redis.lrange("events:" + openhab.id + ":" + req.query.source , 0, -1, function(err, reply) {
                     var events = [];
@@ -19,7 +18,6 @@ exports.eventsget = function(req, res) {
                         event.source = req.query.source;
                         events.push(event);
                     });
-                    logger.debug(JSON.stringify(events));
                     res.render('events', { events: events, pages: 1, page: 1,
                     title: "Events", user: req.user, openhab: openhab, source: req.query.source,
                     errormessages:req.flash('error'), infomessages:req.flash('info') });
@@ -27,45 +25,6 @@ exports.eventsget = function(req, res) {
             } else {
                 res.redirect("/items");
             }
-            
-            
-
-            // var filter = {openhab: openhab};
-            // if (req.query.source)
-            //     filter.source = req.query.source;
-            // Event.find(filter)
-            //     .limit(perPage)
-            //     .skip(perPage * page)
-            //     .sort({when: 'desc'})
-            //     .lean()
-            //     .exec(function(error, events) {
-            //         Event.count().exec(function (err, count) {
-            //             res.render('events', { events: events, pages: count / perPage, page: page,
-            //                 title: "Events", user: req.user, openhab: openhab, source: req.query.source,
-            //                 errormessages:req.flash('error'), infomessages:req.flash('info') });
-            //         });
-            //     });
-        } else {
-
-        }
-    });
-}
-
-exports.eventsvaluesget = function(req, res) {
-    req.user.openhab(function(error, openhab) {
-        if (!error && openhab != null) {
-            var filter = {openhab: openhab, source: req.query.source};
-            Event.find(filter).sort({when: 'asc'}).select('when status -_id').exec(function(error, events) {
-                if (!error) {
-                    var result = [];
-                    var startTime = parseInt(events[0].when.getTime()/1000);
-                    for (var i=0; i<events.length; i++) {
-                        var event = events[i];
-                        result.push([parseInt(event.when.getTime()/1000)-startTime, parseFloat(event.status)]);
-                    }
-                    res.send(JSON.stringify(result));
-                }
-            });
         }
     });
 }
