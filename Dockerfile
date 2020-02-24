@@ -1,4 +1,4 @@
-FROM mhart/alpine-node:7.10.1
+FROM mhart/alpine-node:8.17
 
 # File Author / Maintainer
 MAINTAINER Mehmet Arziman
@@ -35,7 +35,8 @@ COPY ./package.json /opt/openhabcloud/
 RUN ln -s /opt/openhabcloud/package.json /data
 
 WORKDIR /data
-RUN npm install && npm rebuild bcrypt --build-from-source
+ENV NODE_ENV production
+RUN npm install --production=true && npm rebuild bcrypt --build-from-source
 ENV NODE_PATH /data/node_modules
 
 ADD . /opt/openhabcloud
