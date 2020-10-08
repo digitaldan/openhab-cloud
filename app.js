@@ -94,8 +94,9 @@ var flash = require('connect-flash'),
     Limiter = require('ratelimiter'),
     requesttracker = require('./requesttracker'),
     routes = require('./routes'),
-    MongoConnect = require('./system/mongoconnect');
-
+    MongoConnect = require('./system/mongoconnect'),
+    helmet = require("helmet");
+    
 // MongoDB connection settings
 var mongoose = require('mongoose');
 // MongoDB Caching for Item updates
@@ -261,6 +262,12 @@ app.use(session({
 app.use(flash());
 app.use(passport.initialize());
 app.use(passport.session());
+//injects security headers
+app.use(helmet());
+app.use(function (req, res, next) {
+    res.head
+    next();
+});
 //TODO we need to remove this hack, its leftover from long ago.
 //we need to know if this is a proxy connection or not (home/remote), other middleware depends on it.
 app.use(function (req, res, next) {
