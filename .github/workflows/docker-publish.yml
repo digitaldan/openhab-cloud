@@ -35,7 +35,7 @@ jobs:
         run: |
 
           # Change all uppercase to lowercase
-          IMAGE_NAME=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          IMAGE_NAME=$(echo $IMAGE_NAME | tr '[A-Z]' '[a-z]')
 
           # Strip git ref prefix from version
           VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
