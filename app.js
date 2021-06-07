@@ -466,18 +466,18 @@ io.sockets.on('connection', function (socket) {
         if (!error && openhab) {
             logger.info('openHAB-cloud: Connected openHAB with ' + socket.handshake.uuid + ' successfully');
             // Make an openhabaccesslog entry anyway
-            var remoteHost = socket.handshake.headers['x-forwarded-for'] || socket.client.conn.remoteAddress;
-            var newOpenhabAccessLog = new OpenhabAccessLog({
-                openhab: openhab.id,
-                remoteHost: remoteHost,
-                remoteVersion: socket.handshake.openhabVersion,
-                remoteClientVersion: socket.handshake.clientVersion
-            });
-            newOpenhabAccessLog.save(function (error) {
-                if (error) {
-                    logger.error('openHAB-cloud: Error saving openHAB access log: ' + error);
-                }
-            });
+            // var remoteHost = socket.handshake.headers['x-forwarded-for'] || socket.client.conn.remoteAddress;
+            // var newOpenhabAccessLog = new OpenhabAccessLog({
+            //     openhab: openhab.id,
+            //     remoteHost: remoteHost,
+            //     remoteVersion: socket.handshake.openhabVersion,
+            //     remoteClientVersion: socket.handshake.clientVersion
+            // });
+            // newOpenhabAccessLog.save(function (error) {
+            //     if (error) {
+            //         logger.error('openHAB-cloud: Error saving openHAB access log: ' + error);
+            //     }
+            // });
             // Make an event and notification only if openhab was offline
             // If it was marked online, means reconnect appeared because of my.oh fault
             // We don't want massive events and notifications when node is restarted
