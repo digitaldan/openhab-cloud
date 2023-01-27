@@ -432,54 +432,101 @@ io.sockets.on('connection', function (socket) {
         socket.disconnect();
         return;
     }
-    socket.join(socket.handshake.uuid);
     socket.connectionId = uuid.v1(); //we will check this when we handle disconnects
-
-    const openhab = socket.openhab;
-    const lastOnline = openhab.last_online;
-    const lastStatus = openhab.status;
-    const lastServerAddress = openhab.serverAddress
-
-    openhab.status = 'online';
-    openhab.serverAddress = internalAddress;
-    openhab.connectionId = socket.connectionId;
-    openhab.last_online = new Date();
-    openhab.openhabVersion = socket.handshake.openhabVersion;
-    openhab.clientVersion = socket.handshake.clientVersion;
-    openhab.save(
-        function (error) {
-            if(error){
-                logger.error('openHAB-cloud: save error: ' + error);
-                socket.disconnect();
-                return;
-            }
-            logger.info('openHAB-cloud: connect success uuid ' + openhab.uuid + ' connectionId ' + socket.connectionId  + ' prevous address ' + lastServerAddress + " my address " + internalAddress);      
-
-            socket.openhabId = openhab.id;
-            
-            var connectevent = new Event({
-                openhab: openhab.id,
-                source: 'openhab',
-                status: 'online',
-                color: 'good'
-            });
-            connectevent.save(function (error) {
-                if (error) {
-                    logger.error('openHAB-cloud: Error saving connect event: ' + error);
-                }
-            });
-
-            //notify user that connection is online
-            if(lastStatus === 'offline' && Date.now() -  lastOnline > offlineNotificationTime){
-                notifyOpenHABStatusChange(openhab, 'online');
-            } else if(lastStatus === 'online') {
-                logger.warn('openHAB-cloud: connected openhab ' + socket.handshake.uuid + ' was previously marked as online')
-            }
+    
+    //set a lock so only one connection from the same client can connect, avoids split brain when clients reconnect
+    const redisLockKey = 'connection:' + socket.handshake.uuid;
+    const redisLockValue = JSON.stringify({
+        uuid: socket.handshake.uuid,
+        connectionId: socket.connectionId,
+        serverAddress: internalAddress
+    });
+    //try to create a lock and set the expire time for 2 heart beats plus 10 seconds, so 70 seconds
+    redis.set(redisLockKey, redisLockValue, 'NX', 'EX', 70, (err, result) => {
+        if(err) {
+            logger.info('openHAB-cloud: error attaining connection lock for  uuid ' + socket.handshake.uuid + ' connectionId ' + socket.connectionId + ' ' + err);
+            socket.disconnect();
+            return;      
         }
-    );
 
+        //if result is nil so a entry already existed
+        if(!result){
+            //this key already exists, which means another connection is in progress
+            logger.info('openHAB-cloud: another connection has lock for uuid ' + socket.handshake.uuid + ' my connectionId ' + socket.connectionId);
+            socket.disconnect();
+            return;  
+        }
+
+        socket.join(socket.handshake.uuid);
+
+        //listen for pings from the client
+        socket.conn.on('packet', function (packet) {
+            if (packet.type === 'ping') {
+                //reset the expire time for 2 heart beats plus 10 seconds, so 70 seconds
+                redis.expire(redisLockKey, 70);
+            };
+        });
+
+        const openhab = socket.openhab;
+        const lastOnline = openhab.last_online;
+        const lastStatus = openhab.status;
+        const lastServerAddress = openhab.serverAddress
+
+        openhab.status = 'online';
+        openhab.serverAddress = internalAddress;
+        openhab.connectionId = socket.connectionId;
+        openhab.last_online = new Date();
+        openhab.openhabVersion = socket.handshake.openhabVersion;
+        openhab.clientVersion = socket.handshake.clientVersion;
+        openhab.save(
+            function (error) {
+                if(error){
+                    logger.error('openHAB-cloud: save error: ' + error);
+                    socket.disconnect();
+                    return;
+                }
+                logger.info('openHAB-cloud: connect success uuid ' + openhab.uuid + ' connectionId ' + socket.connectionId  + ' prevous address ' + lastServerAddress + " my address " + internalAddress);      
+
+                socket.openhabId = openhab.id;
+                
+                var connectevent = new Event({
+                    openhab: openhab.id,
+                    source: 'openhab',
+                    status: 'online',
+                    color: 'good'
+                });
+                connectevent.save(function (error) {
+                    if (error) {
+                        logger.error('openHAB-cloud: Error saving connect event: ' + error);
+                    }
+                });
+
+                //notify user that connection is online
+                if(lastStatus === 'offline' && Date.now() -  lastOnline > offlineNotificationTime){
+                    notifyOpenHABStatusChange(openhab, 'online');
+                } else if(lastStatus === 'online') {
+                    logger.warn('openHAB-cloud: connected openhab ' + socket.handshake.uuid + ' was previously marked as online')
+                }
+            }
+        );
+    });
     socket.on('disconnect', function () {
         logger.info('openHAB-cloud: Disconnected uuid ' + socket.handshake.uuid + ' connectionId ' + socket.connectionId);
+        
+        //remove our lock, but make sure its ours and not someone else's
+        redis.get(redisLockKey, (err, reply) => {
+            if (err) {
+                logger.info('openHAB-cloud: error removing connection lock for  uuid ' + openhab.uuid + ' connectionId ' + socket.connectionId + ' ' + err);
+                return;
+            }
+            const value = JSON.parse(reply);
+            //check if ours
+            if (value && value.connectionId === socket.connectionId) {
+                redis.del(redisLockKey);
+            } else {
+                logger.info('openHAB-cloud: will not delete lock, another connection has lock for uuid ' + openhab.uuid + ' my connectionId ' + socket.connectionId + ' their info: ' + reply);
+            }
+        });
         Openhab.setOffline(socket.connectionId, function (error, openhab) {
             if (error) {
                 logger.error('openHAB-cloud: Error saving openHAB disconnect: ' + error);
@@ -508,6 +555,14 @@ io.sockets.on('connection', function (socket) {
                 logger.warn(`openHAB-cloud: ${socket.handshake.uuid} Did not mark as offline, another instance is connected`);
             }
         });
+    });
+
+    socket.on('ping', function () {
+        logger.info('openHAB-cloud: ping uuid ' + socket.handshake.uuid + ' connectionId ' + socket.connectionId);
+    });
+
+    socket.on('pong', function () {
+        logger.info('openHAB-cloud: pong uuid ' + socket.handshake.uuid + ' connectionId ' + socket.connectionId);
     });
 
     /*
