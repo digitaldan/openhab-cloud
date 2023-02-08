@@ -13,7 +13,7 @@ var system = require('../system'),
     api_routes = require('./api'),
     oauth2 = require('./oauth2'),
     setSessionTimezone = require('./setTimezone'),
-    androidRegistrationService = require('./androidRegistrationService'),
+    notificationRegistration = require('./notificationRegistrationService'),
     appleRegistrationService = require('./appleRegistrationService');
     ifttt_routes = require('./ifttt');
 
@@ -238,8 +238,16 @@ Routes.prototype.setupAppRoutes = function (app) {
     app.all('/api/v1/notifications*', this.ensureRestAuthenticated, this.preassembleBody, this.setOpenhab, api_routes.notificationsget);
     app.all('/api/v1/settings/notifications', this.ensureRestAuthenticated, this.preassembleBody, this.setOpenhab, api_routes.notificationssettingsget);
 
+    //remove this and '/addAndroidRegistration*' when we have a majority of users on the latest android
+    const androidMigrateHelper = function (req, res, next) {
+        req.query['deviceType'] = 'android'
+        return next();
+    }
     // Android app registration
-    app.all('/addAndroidRegistration*', this.ensureRestAuthenticated, this.preassembleBody, this.setOpenhab, androidRegistrationService);
+    app.all('/addAndroidRegistration*', this.ensureRestAuthenticated, this.preassembleBody, this.setOpenhab, androidMigrateHelper, notificationRegistration);
+    //this will be the only registration endpoint
+    app.all('/notificationRegistration*', this.ensureRestAuthenticated, this.preassembleBody, this.setOpenhab, notificationRegistration);
+    //this should be removed once IOS devices have sufficiently upgraded. 
     app.all('/addAppleRegistration*', this.ensureRestAuthenticated, this.preassembleBody, this.setOpenhab, appleRegistrationService);
 };
 

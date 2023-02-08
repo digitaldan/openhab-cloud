@@ -60,11 +60,6 @@ logger.info('Backend logging initialized...');
 // Initialize the main configuration
 var taskEnv = process.env.TASK || 'main';
 
-// If Firebase Cloud Messaging is configured set it up
-if (system.isGcmConfigured()) {
-    require('./fcm-xmpp');
-}
-
 module.exports.config = config;
 
 // Setup all homepage
@@ -326,7 +321,7 @@ rt.setSocketIO(io);
 rt.setupRoutes(app);
 
 function sendNotificationToUser(user, message, icon, severity) {
-    var androidRegistrations = [];
+    var fcmRegistrations = [];
     var iosDeviceTokens = [];
     var newNotification = new Notification({
         user: user.id,
@@ -352,15 +347,17 @@ function sendNotificationToUser(user, message, icon, severity) {
         }
 
         for (var i = 0; i < userDevices.length; i++) {
-            if (userDevices[i].deviceType === 'android') {
-                androidRegistrations.push(userDevices[i].androidRegistration);
-            } else if (userDevices[i].deviceType === 'ios') {
+            logger.info("checking ", userDevices[i])
+            if (userDevices[i].fcmToken) {
+                logger.info("adding ", userDevices[i].fcmToken)
+                fcmRegistrations.push(userDevices[i].fcmToken);
+            } else if (userDevices[i].iosDeviceToken) {
                 iosDeviceTokens.push(userDevices[i].iosDeviceToken);
             }
         }
         // If we found any android devices, send notification
-        if (androidRegistrations.length > 0) {
-            firebase.sendNotification(androidRegistrations, newNotification);
+        if (fcmRegistrations.length > 0) {
+            firebase.sendNotification(fcmRegistrations, newNotification);
         }
         // If we found any ios devices, send notification
         if (iosDeviceTokens.length > 0) {

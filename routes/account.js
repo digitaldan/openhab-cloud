@@ -11,7 +11,6 @@ var Item = require('../models/item');
 var Notification = require('../models/notification');
 var OAuth2Token = require('../models/oauth2token');
 var UserDevice = require('../models/userdevice');
-var UserDeviceLocationHistory = require('../models/userdevicelocationhistory');
 var form = require('express-form'),
     field = form.field;
 var path           = require('path')

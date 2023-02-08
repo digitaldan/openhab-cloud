@@ -5,7 +5,6 @@ var logger = require('../logger');
 var mongoose = require('mongoose'),
     Schema = mongoose.Schema;
 var ObjectId = mongoose.SchemaTypes.ObjectId;
-var UserDeviceLocationHistory = require('../models/userdevicelocationhistory');
 var appleSender = require('../notificationsender/aps-helper');
 var firebase = require('../notificationsender/firebase');
 var redis = require('../redis-helper');
@@ -34,14 +33,16 @@ exports.devicesget = function(req, res) {
                 selectedDeviceArrayId = i;
             }
         }
-        UserDeviceLocationHistory.find({userDevice: selectedDeviceId}, function(error, locationHistory) {
-//            logger.info("Location history size = " + locationHistory.length);
-            res.render('devices', { userDevices: userDevices,
-                title: "Devices", user: req.user, selectedDeviceId: selectedDeviceId,
-                selectedDeviceArrayId: selectedDeviceArrayId, locationHistory: locationHistory,
-                baseUrl: system.getBaseURL(), appleLink: system.getAppleLink(), androidLink: system.getAndroidLink(),
-                errormessages:req.flash('error'), infomessages:req.flash('info') });
-        });
+        res.render('devices', { userDevices: userDevices,
+            title: "Devices", 
+            user: req.user, 
+            selectedDeviceId: selectedDeviceId,
+            selectedDeviceArrayId: selectedDeviceArrayId,
+            baseUrl: system.getBaseURL(), 
+            appleLink: system.getAppleLink(), 
+            androidLink: system.getAndroidLink(),
+            errormessages:req.flash('error'), 
+            infomessages:req.flash('info') });
     });
 }
 
@@ -60,11 +61,11 @@ exports.devicessendmessage = function(req, res) {
         var message = req.form.messagetext;
         UserDevice.findOne({owner: req.user.id, _id: sendMessageDeviceId}, function (error, sendMessageDevice) {
             if (!error && sendMessageDevice) {
-                if (sendMessageDevice.deviceType == 'ios') {
+                if (sendMessageDevice.iosDeviceToken) {
                     appleSender.sendAppleNotification(sendMessageDevice.iosDeviceToken, message);
                 }
-                if (sendMessageDevice.deviceType == 'android') {
-                    firebase.sendMessageNotification(sendMessageDevice.androidRegistration, message);
+                if (sendMessageDevice.fcmToken) {
+                    firebase.sendMessageNotification(sendMessageDevice.fcmToken, message);
                 }
                 req.flash('info', 'Your message was sent');
                 res.redirect('/devices/' + sendMessageDevice._id);
