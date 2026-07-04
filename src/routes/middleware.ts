@@ -42,8 +42,12 @@ const connectionCache = new Map<string, ConnectionCacheEntry>();
 // Default cache TTL: 10 seconds
 const CONNECTION_CACHE_TTL_MS = 10 * 1000;
 
-// Timeout for internal proxy requests (ms)
-const INTERNAL_PROXY_TIMEOUT_MS = 5000;
+// Idle timeout for internal proxy requests (ms). Guards connection setup and
+// time-to-first-byte so a dead/unreachable target node fails fast. It is
+// cleared once the upstream response begins streaming (see proxyToServer) so
+// long-lived streaming responses (SSE: /rest/events, /rest/events/states) that
+// sit quiet between events are not torn down.
+const INTERNAL_PROXY_TIMEOUT_MS = 10000;
 
 // Cleanup interval: run every 60 seconds
 const CACHE_CLEANUP_INTERVAL_MS = 60 * 1000;
@@ -320,6 +324,11 @@ export function createMiddleware(deps: MiddlewareDependencies): RouteMiddleware 
         timeout: INTERNAL_PROXY_TIMEOUT_MS,
       },
       (proxyRes) => {
+        // The upstream response has started. Disable the idle timeout so
+        // long-lived streaming responses (SSE) that go quiet between events
+        // are not destroyed mid-stream; teardown is handled by the client
+        // disconnect (res 'close') and the orphaned-request cleanup instead.
+        proxyReq.setTimeout(0);
         if (res.headersSent) {
           proxyRes.resume(); // drain response to free resources
           return;
@@ -334,6 +343,17 @@ export function createMiddleware(deps: MiddlewareDependencies): RouteMiddleware 
     });
 
     proxyReq.on('error', onError);
+
+    // Tear down the internal proxy request if the client disconnects. The idle
+    // timeout is cleared once the response starts streaming (see above), so for
+    // long-lived streaming responses (SSE) this is what reaps the upstream
+    // connection when the client goes away — .pipe() does not propagate the
+    // client-side close to destroy the source request.
+    res.on('close', () => {
+      if (!proxyReq.destroyed) {
+        proxyReq.destroy();
+      }
+    });
 
     // Body was already consumed by preassembleBody middleware for most proxy
     // routes. WebSocket upgrade routes (/ws/*) have no body.
