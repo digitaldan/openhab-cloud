@@ -336,7 +336,7 @@ describe('Route Middleware', () => {
         rawBody: undefined,
       } as unknown as Request;
 
-      const mockRes = {} as unknown as Response;
+      const mockRes = { on: sinon.stub() } as unknown as Response;
       const nextSpy = sinon.spy();
 
       const mockProxyReq = {
@@ -373,7 +373,7 @@ describe('Route Middleware', () => {
         rawBody: 'ON',
       } as unknown as Request;
 
-      const mockRes = {} as unknown as Response;
+      const mockRes = { on: sinon.stub() } as unknown as Response;
       const nextSpy = sinon.spy();
 
       const mockProxyReq = {
