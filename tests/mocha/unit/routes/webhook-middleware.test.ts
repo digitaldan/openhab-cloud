@@ -385,7 +385,7 @@ describe('Webhook Middleware', () => {
       appendWellKnownPath(req, {} as Response, next);
 
       expect(req.webhookLocalPath).to.equal('/mcp/.well-known/oauth-authorization-server');
-      expect(next.calledOnce).to.be.true;
+      expect(next.calledOnceWithExactly()).to.be.true;
     });
 
     it('should append to a nested webhook path', () => {
@@ -395,6 +395,37 @@ describe('Webhook Middleware', () => {
       appendWellKnownPath(req, {} as Response, next);
 
       expect(req.webhookLocalPath).to.equal('/rest/hooks/test/.well-known/oauth-protected-resource');
+      expect(next.calledOnceWithExactly()).to.be.true;
+    });
+
+    it('should not double up the separator when localPath ends in a slash', () => {
+      const req = reqWith('oauth-authorization-server', '/mcp/');
+      const next = sinon.spy();
+
+      appendWellKnownPath(req, {} as Response, next);
+
+      expect(req.webhookLocalPath).to.equal('/mcp/.well-known/oauth-authorization-server');
+      expect(next.calledOnceWithExactly()).to.be.true;
+    });
+
+    it('should skip the route when reused without a resolved webhook path', () => {
+      const req = reqWith('oauth-authorization-server');
+      const next = sinon.spy();
+
+      appendWellKnownPath(req, {} as Response, next);
+
+      expect(req.webhookLocalPath).to.be.undefined;
+      expect(next.calledOnceWithExactly('route')).to.be.true;
+    });
+
+    it('should skip the route when reused without requireWellKnownDoc', () => {
+      const req = reqWith('../../rest/items', '/mcp');
+      const next = sinon.spy();
+
+      appendWellKnownPath(req, {} as Response, next);
+
+      expect(req.webhookLocalPath).to.equal('/mcp');
+      expect(next.calledOnceWithExactly('route')).to.be.true;
     });
   });
 });
