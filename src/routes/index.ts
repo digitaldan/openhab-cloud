@@ -23,7 +23,7 @@ import passport from 'passport';
 import { Types } from 'mongoose';
 import type { Server as SocketIOServer } from 'socket.io';
 
-import { createMiddleware, createSetOpenhabForWebhook, createBodySizeLimit, MiddlewareDependencies } from './middleware';
+import { createMiddleware, createSetOpenhabForWebhook, createBodySizeLimit, requireWellKnownDoc, appendWellKnownPath, MiddlewareDependencies } from './middleware';
 import type { IWebhookRepositoryForMiddleware, IOpenhabRepositoryForMiddleware } from './middleware';
 import { createLoginRedirectAuthenticated, createApplyReturnTo } from '../middleware/guards';
 import type { AppLogger } from '../lib/logger';
@@ -520,6 +520,15 @@ export function createRoutes(deps: RoutesDependencies): Router {
 
   router.all('/api/hooks/:uuid', setOpenhabForWebhook, webhookBodyLimit, preassembleBody, ensureServer, webhookProxyRoute);
   router.all('/api/hooks/:uuid/{*subpath}', setOpenhabForWebhook, webhookBodyLimit, preassembleBody, ensureServer, webhookProxyRoute);
+
+  // RFC 8414 and RFC 9728 put the well-known segment between the host and the
+  // path, so a hook's OAuth metadata belongs at /.well-known/<doc>/api/hooks/<uuid>.
+  // Clients that discover metadata from the issuer alone only try this form, never
+  // the /api/hooks/<uuid>/.well-known/<doc> form the routes above already serve.
+  // Keep this GET-only: csrf-sync ignores GET, but /.well-known is not in the
+  // skipCsrfProtection list, so allowing writes here would start failing on CSRF.
+  router.get('/.well-known/:doc/api/hooks/:uuid', requireWellKnownDoc, setOpenhabForWebhook, appendWellKnownPath,
+    webhookBodyLimit, preassembleBody, ensureServer, webhookProxyRoute);
 
   // ============================================
   // General Routes

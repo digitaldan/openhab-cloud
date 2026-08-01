@@ -603,3 +603,50 @@ export function createSetOpenhabForWebhook(
     }
   };
 }
+
+/**
+ * OAuth metadata documents a webhook target may publish. Anything else is not
+ * proxied, so an arbitrary path can't be reached through the well-known route.
+ */
+export const WELL_KNOWN_OAUTH_DOCS = new Set([
+  'oauth-authorization-server',
+  'oauth-protected-resource',
+  'openid-configuration',
+]);
+
+function wellKnownDoc(req: Request): string {
+  const param = req.params['doc'];
+  return (Array.isArray(param) ? param[0] : param) ?? '';
+}
+
+/**
+ * Pass only recognised well-known documents through. Runs ahead of the webhook
+ * lookup so an unknown document costs no database round-trip.
+ */
+export const requireWellKnownDoc: RequestHandler = (req, _res, next) => {
+  if (!WELL_KNOWN_OAUTH_DOCS.has(wellKnownDoc(req))) {
+    next('route');
+    return;
+  }
+  next();
+};
+
+/**
+ * Point the proxy at the document under the webhook's local path. Runs after
+ * createSetOpenhabForWebhook, which has already resolved req.webhookLocalPath.
+ *
+ * Re-checks the document rather than trusting requireWellKnownDoc to have run:
+ * the value is interpolated into the path we proxy to, so an unchecked one would
+ * reach any endpoint on the user's openHAB without authentication.
+ */
+export const appendWellKnownPath: RequestHandler = (req, _res, next) => {
+  const doc = wellKnownDoc(req);
+  const basePath = req.webhookLocalPath;
+  if (!basePath || !WELL_KNOWN_OAUTH_DOCS.has(doc)) {
+    next('route');
+    return;
+  }
+  // localPath is stored as the add-on sent it, so it may carry a trailing slash.
+  req.webhookLocalPath = `${basePath.replace(/\/+$/, '')}/.well-known/${doc}`;
+  next();
+};
