@@ -21,6 +21,7 @@
  * Test config (docker/config.test.json):
  *   host: "openhab-cloud.test"
  *   proxyHost: "proxy.openhab-cloud.test"
+ *   browserProxyHost: "connect.openhab-cloud.test"
  *   port: 3000
  */
 
@@ -28,6 +29,7 @@ import { expect } from 'chai';
 import {
   OpenHABTestClient,
   APITestClient,
+  WebTestClient,
   ProxyRequest,
 } from '../clients';
 import { TEST_FIXTURES } from '../seed-database';
@@ -36,6 +38,7 @@ const SERVER_URL = process.env['SERVER_URL'] || 'http://localhost:3000';
 
 // These must match docker/config.test.json
 const PROXY_HOST = 'proxy.openhab-cloud.test';
+const BROWSER_PROXY_HOST = 'connect.openhab-cloud.test';
 const REMOTE_HOST = 'remote.openhab-cloud.test';
 const MAIN_HOST = 'openhab-cloud.test';
 
@@ -265,6 +268,67 @@ describe('VHost Proxy Detection', function () {
       expect(response.status).to.equal(200);
       expect(response.text).to.equal('openhab-remote-response');
       expect(response.text).to.not.include('<form');
+    });
+  });
+
+  // ============================================
+  // Group 2b: Vhost proxy via browserProxyHost
+  // ============================================
+
+  describe('Vhost proxy mode (Host = browserProxyHost)', function () {
+    let webClient: WebTestClient;
+
+    beforeEach(async function () {
+      webClient = new WebTestClient(SERVER_URL);
+      const success = await webClient.login(
+        TEST_FIXTURES.users.testUser.username,
+        TEST_FIXTURES.users.testUser.password
+      );
+      expect(success).to.equal(true);
+      webClient.withHost(BROWSER_PROXY_HOST);
+    });
+
+    it('should forward browserProxyHost as Host header to openHAB', async function () {
+      let receivedRequest: ProxyRequest | null = null;
+
+      openhabClient.onRequest((req) => {
+        receivedRequest = req;
+        return {
+          id: req.id,
+          status: 200,
+          headers: { 'Content-Type': 'text/plain' },
+          body: 'OK',
+        };
+      });
+
+      // openHAB builds absolute URLs (sitemap event subscriptions) from this
+      // header. Handing back proxyHost URLs to a page served from
+      // browserProxyHost breaks them — different origin, no session cookie.
+      await webClient.getPage('/rest/sitemaps/events/subscribe');
+
+      expect(receivedRequest).to.not.be.null;
+      expect(receivedRequest!.headers['host']).to.equal(
+        `${BROWSER_PROXY_HOST}:3000`
+      );
+    });
+
+    it('should strip client-supplied X-Forwarded-Host before proxying', async function () {
+      let receivedRequest: ProxyRequest | null = null;
+
+      openhabClient.onRequest((req) => {
+        receivedRequest = req;
+        return {
+          id: req.id,
+          status: 200,
+          headers: { 'Content-Type': 'text/plain' },
+          body: 'OK',
+        };
+      });
+
+      await webClient.getPage('/rest/items');
+
+      expect(receivedRequest).to.not.be.null;
+      expect(receivedRequest!.headers['x-forwarded-host']).to.be.undefined;
     });
   });
 

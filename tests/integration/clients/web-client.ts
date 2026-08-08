@@ -39,16 +39,44 @@ export class WebTestClient {
   private agent: supertest.Agent;
   private loggedIn = false;
   private csrfToken: string | null = null;
+  private hostOverride: string | null = null;
 
   constructor(baseUrl: string) {
     this.agent = supertest.agent(baseUrl);
   }
 
   /**
+   * Set the hostname for vhost detection (sets X-Forwarded-Host header).
+   * When trust proxy is enabled, Express uses this to derive req.hostname.
+   */
+  withHost(hostname: string): this {
+    this.hostOverride = hostname;
+    return this;
+  }
+
+  /**
+   * Clear host override
+   */
+  clearHost(): this {
+    this.hostOverride = null;
+    return this;
+  }
+
+  /**
+   * Apply the host override, if any, to an outgoing request
+   */
+  private applyHost<T extends supertest.Test>(req: T): T {
+    if (this.hostOverride) {
+      req.set('X-Forwarded-Host', this.hostOverride);
+    }
+    return req;
+  }
+
+  /**
    * Get a page and parse it
    */
   async getPage(path: string): Promise<PageResult> {
-    const response = await this.agent.get(path);
+    const response = await this.applyHost(this.agent.get(path));
 
     const $ = cheerio.load(response.text || '');
 
@@ -78,8 +106,7 @@ export class WebTestClient {
       data['_csrf'] = this.csrfToken;
     }
 
-    const response = await this.agent
-      .post(path)
+    const response = await this.applyHost(this.agent.post(path))
       .type('form')
       .send(data);
 
@@ -167,7 +194,7 @@ export class WebTestClient {
     path: string,
     expectedLocation: string
   ): Promise<void> {
-    const response = await this.agent.get(path).redirects(0);
+    const response = await this.applyHost(this.agent.get(path)).redirects(0);
 
     if (response.status !== 302 && response.status !== 301) {
       throw new Error(`Expected redirect, got status ${response.status}`);

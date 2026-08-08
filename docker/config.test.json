@@ -2,6 +2,7 @@
   "system": {
     "host": "openhab-cloud.test",
     "proxyHost": "proxy.openhab-cloud.test",
+    "browserProxyHost": "connect.openhab-cloud.test",
     "listenIp": "0.0.0.0",
     "port": 3000,
     "protocol": "http",
