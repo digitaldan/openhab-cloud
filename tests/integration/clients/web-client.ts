@@ -138,8 +138,7 @@ export class WebTestClient {
     }
 
     // Submit login form
-    const response = await this.agent
-      .post('/login')
+    const response = await this.applyHost(this.agent.post('/login'))
       .type('form')
       .send({
         username,
@@ -164,7 +163,7 @@ export class WebTestClient {
    * Log out
    */
   async logout(): Promise<void> {
-    await this.agent.get('/logout');
+    await this.applyHost(this.agent.get('/logout'));
     this.loggedIn = false;
     this.csrfToken = null;
   }
@@ -237,7 +236,7 @@ export class WebTestClient {
    * Expect status code
    */
   async expectStatus(path: string, expectedStatus: number): Promise<void> {
-    const response = await this.agent.get(path);
+    const response = await this.applyHost(this.agent.get(path));
 
     if (response.status !== expectedStatus) {
       throw new Error(
