@@ -844,6 +844,10 @@ function createProxyHandlerBase(
     delete requestHeaders['x-real-ip'];
     delete requestHeaders['x-forwarded-for'];
     delete requestHeaders['x-forwarded-proto'];
+    // openHAB's REST layer prefers X-Forwarded-Host over Host when building
+    // absolute URLs (sitemap subscriptions, Location headers). Drop any client
+    // supplied value so the Host we set below is the only thing it can use.
+    delete requestHeaders['x-forwarded-host'];
 
     // For WebSocket upgrades, ensure hop-by-hop headers are present
     if (isUpgrade) {
@@ -857,7 +861,15 @@ function createProxyHandlerBase(
     requestHeaders['user-agent'] = 'openhab-cloud/0.0.1';
 
     if (supportVhost && req.isVhostProxy) {
-      requestHeaders['host'] = `${systemConfig.getProxyHost()}:${systemConfig.getProxyPort()}`;
+      // Keep the browser-facing hostname when the request came in on it.
+      // openHAB builds absolute URLs (e.g. sitemap event subscriptions) from
+      // this header, and a page served from browserProxyHost must not be handed
+      // back URLs on proxyHost — those are a different origin with no session
+      // cookie, so the browser gets a 401.
+      const vhostHost = req.isBrowserVhost
+        ? systemConfig.getBrowserProxyHost() ?? systemConfig.getProxyHost()
+        : systemConfig.getProxyHost();
+      requestHeaders['host'] = `${vhostHost}:${systemConfig.getProxyPort()}`;
     }
 
     const openhab = req.openhab;
