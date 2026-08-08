@@ -17,6 +17,7 @@ import type { IUser, UserRole } from '../types/models';
 import type { ILogger } from '../types/notification';
 import type { ValidatedRequest } from '../middleware/validation.middleware';
 import type { AddUserInput } from '../schemas';
+import { invalidateUserCache } from '../lib/lookup-caches';
 
 /**
  * Repository interface for User operations
@@ -191,6 +192,7 @@ export class UsersController {
       }
 
       await this.userRepository.deleteById(userId);
+      invalidateUserCache(userId);
       this.logger.info(`User deleted: ${userId}`);
       req.flash('info', 'User deleted');
       res.redirect('/users');

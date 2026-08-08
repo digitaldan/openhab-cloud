@@ -16,6 +16,7 @@ import type { UserService, PasswordResult } from '../services/user.service';
 import type { OpenhabService } from '../services/openhab.service';
 import type { ILogger } from '../types/notification';
 import type { ValidatedRequest } from '../middleware/validation.middleware';
+import { invalidateOpenhabCache } from '../lib/lookup-caches';
 import type {
   LoginInput,
   RegisterInput,
@@ -243,6 +244,13 @@ export class AccountController {
   postAccount: RequestHandler = asyncHandler(async (req: Request, res) => {
     const typedReq = req as ValidatedRequest<AccountUpdateInput>;
     const { openhabuuid, openhabsecret } = typedReq.validatedBody;
+
+    // Registering or re-keying the openHAB changes what setOpenhab resolves,
+    // and the proxy emits to a room named after the uuid.
+    const accountId = req.user?.account?.toString();
+    if (accountId) {
+      invalidateOpenhabCache(accountId);
+    }
 
     if (!req.openhab) {
       // No existing openHAB - create a new one

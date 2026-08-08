@@ -24,6 +24,7 @@ import type { PromisifiedRedisClient } from '../lib/redis';
 import type { AppLogger } from '../lib/logger';
 import type { ConnectionInfo } from '../types/connection';
 import type { IOpenhab, IWebhook } from '../types/models';
+import { openhabCache } from '../lib/lookup-caches';
 
 /**
  * Cache entry for connection info
@@ -271,6 +272,17 @@ export function createMiddleware(deps: MiddlewareDependencies): RouteMiddleware 
       return;
     }
 
+    // Every proxied request resolves the user's openHAB, so a page pulling ~90
+    // assets would otherwise be ~90 findOne calls. Cache it per account.
+    const accountId = req.user.account?.toString();
+    if (accountId) {
+      const cachedOpenhab = openhabCache.get(accountId);
+      if (cachedOpenhab) {
+        lookupConnectionInfo(cachedOpenhab, req, res, next);
+        return;
+      }
+    }
+
     req.user
       .getOpenhab()
       .then((openhab) => {
@@ -282,6 +294,9 @@ export function createMiddleware(deps: MiddlewareDependencies): RouteMiddleware 
           return;
         }
 
+        if (accountId) {
+          openhabCache.set(accountId, openhab);
+        }
         lookupConnectionInfo(openhab, req, res, next);
       })
       .catch((error: unknown) => {

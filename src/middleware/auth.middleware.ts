@@ -18,6 +18,7 @@ import { Strategy as ClientPasswordStrategy } from 'passport-oauth2-client-passw
 import { Strategy as BearerStrategy } from 'passport-http-bearer';
 import type { AuthService } from '../services/auth.service';
 import type { ILogger } from '../types/notification';
+import { userCache } from '../lib/lookup-caches';
 
 /**
  * Configure Passport.js authentication strategies
@@ -138,8 +139,17 @@ export function configurePassport(authService: AuthService, logger: ILogger): vo
   // Session deserialization - fetch user from ID
   passport.deserializeUser(async (id: string, done) => {
     try {
+      const cached = userCache.get(id);
+      if (cached) {
+        done(null, cached);
+        return;
+      }
+
       const user = await authService.findUserById(id);
-      // Cast to Express.User - the Mongoose model has the openhab method
+      if (user) {
+        // Cast to Express.User - the Mongoose model has the openhab method
+        userCache.set(id, user as Express.User);
+      }
       done(null, user as Express.User | null);
     } catch (error) {
       logger.error('Deserialize user error:', error);
