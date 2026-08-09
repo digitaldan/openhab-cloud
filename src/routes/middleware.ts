@@ -273,18 +273,16 @@ export function createMiddleware(deps: MiddlewareDependencies): RouteMiddleware 
     }
 
     // Every proxied request resolves the user's openHAB, so a page pulling ~90
-    // assets would otherwise be ~90 findOne calls. Cache it per account.
+    // assets would otherwise be ~90 findOne calls. Cache it per account, and
+    // share one lookup between the requests that arrive together on a miss.
     const accountId = req.user.account?.toString();
-    if (accountId) {
-      const cachedOpenhab = openhabCache.get(accountId);
-      if (cachedOpenhab) {
-        lookupConnectionInfo(cachedOpenhab, req, res, next);
-        return;
-      }
-    }
+    const loadOpenhab = (): Promise<IOpenhab | null> => req.user!.getOpenhab();
 
-    req.user
-      .getOpenhab()
+    const resolveOpenhab = accountId
+      ? openhabCache.getOrLoad(accountId, loadOpenhab)
+      : loadOpenhab();
+
+    resolveOpenhab
       .then((openhab) => {
         if (!openhab) {
           logger.warn("Can't find the openHAB of user");
@@ -294,9 +292,6 @@ export function createMiddleware(deps: MiddlewareDependencies): RouteMiddleware 
           return;
         }
 
-        if (accountId) {
-          openhabCache.set(accountId, openhab);
-        }
         lookupConnectionInfo(openhab, req, res, next);
       })
       .catch((error: unknown) => {

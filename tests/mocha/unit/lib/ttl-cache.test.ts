@@ -133,4 +133,95 @@ describe('TtlCache', () => {
 
     expect(cache.size).to.equal(1);
   });
+
+  describe('getOrLoad', () => {
+    it('runs the loader once for a burst of concurrent misses', async () => {
+      const cache = new TtlCache<string>(1000);
+      let resolveLoad: (value: string) => void = () => {};
+      const loader = sinon.stub().callsFake(
+        () => new Promise<string>((resolve) => { resolveLoad = resolve; })
+      );
+
+      const inFlight = Promise.all(
+        Array.from({ length: 50 }, () => cache.getOrLoad('a', loader))
+      );
+      resolveLoad('value');
+      const results = await inFlight;
+
+      expect(loader.calledOnce).to.be.true;
+      expect(results.every((r) => r === 'value')).to.be.true;
+    });
+
+    it('serves later callers from the cache without loading again', async () => {
+      const cache = new TtlCache<string>(1000);
+      const loader = sinon.stub().resolves('value');
+
+      await cache.getOrLoad('a', loader);
+      await cache.getOrLoad('a', loader);
+
+      expect(loader.calledOnce).to.be.true;
+    });
+
+    it('does not cache a null result', async () => {
+      const cache = new TtlCache<string>(1000);
+      const loader = sinon.stub().resolves(null);
+
+      const result = await cache.getOrLoad('a', loader);
+
+      expect(result).to.be.null;
+      expect(cache.size).to.equal(0);
+    });
+
+    it('propagates a loader rejection to every waiter', async () => {
+      const cache = new TtlCache<string>(1000);
+      const loader = sinon.stub().rejects(new Error('boom'));
+
+      const results = await Promise.allSettled([
+        cache.getOrLoad('a', loader),
+        cache.getOrLoad('a', loader),
+      ]);
+
+      expect(loader.calledOnce).to.be.true;
+      expect(results.every((r) => r.status === 'rejected')).to.be.true;
+    });
+
+    it('retries after a failed load rather than caching the failure', async () => {
+      const cache = new TtlCache<string>(1000);
+      const loader = sinon.stub();
+      loader.onFirstCall().rejects(new Error('boom'));
+      loader.onSecondCall().resolves('value');
+
+      await cache.getOrLoad('a', loader).catch(() => undefined);
+      const result = await cache.getOrLoad('a', loader);
+
+      expect(result).to.equal('value');
+      expect(loader.calledTwice).to.be.true;
+    });
+
+    it('does not write back a result invalidated mid-load', async () => {
+      const cache = new TtlCache<string>(1000);
+      let resolveLoad: (value: string) => void = () => {};
+      const loader = () => new Promise<string>((resolve) => { resolveLoad = resolve; });
+
+      const pending = cache.getOrLoad('a', loader);
+      // Invalidation lands while the load is still outstanding
+      cache.delete('a');
+      resolveLoad('stale');
+      await pending;
+
+      expect(cache.get('a')).to.be.undefined;
+    });
+
+    it('still returns the loaded value to the caller after invalidation', async () => {
+      const cache = new TtlCache<string>(1000);
+      let resolveLoad: (value: string) => void = () => {};
+      const loader = () => new Promise<string>((resolve) => { resolveLoad = resolve; });
+
+      const pending = cache.getOrLoad('a', loader);
+      cache.delete('a');
+      resolveLoad('value');
+
+      expect(await pending).to.equal('value');
+    });
+  });
 });

@@ -246,11 +246,15 @@ export class AccountController {
     const { openhabuuid, openhabsecret } = typedReq.validatedBody;
 
     // Registering or re-keying the openHAB changes what setOpenhab resolves,
-    // and the proxy emits to a room named after the uuid.
+    // and the proxy emits to a room named after the uuid. Invalidate after the
+    // write lands - doing it only up front leaves a window where a concurrent
+    // request reads the old row and caches it again behind our back.
     const accountId = req.user?.account?.toString();
-    if (accountId) {
-      invalidateOpenhabCache(accountId);
-    }
+    const dropCachedOpenhab = (): void => {
+      if (accountId) {
+        invalidateOpenhabCache(accountId);
+      }
+    };
 
     if (!req.openhab) {
       // No existing openHAB - create a new one
@@ -261,6 +265,7 @@ export class AccountController {
       });
 
       if (result.success) {
+        dropCachedOpenhab();
         req.flash('info', 'openHAB successfully registered');
       } else {
         req.flash('error', result.error ?? 'Failed to register openHAB');
@@ -274,6 +279,7 @@ export class AccountController {
       );
 
       if (result.success) {
+        dropCachedOpenhab();
         req.flash('info', 'openHAB settings successfully updated');
       } else {
         req.flash('error', result.error ?? 'Failed to update settings');

@@ -432,6 +432,29 @@ describe('Route Middleware', () => {
       expect(openhabCache.get(accountId)).to.be.undefined;
     });
 
+    it('issues one lookup for a burst of concurrent requests', async () => {
+      const middleware = createMiddleware(deps);
+      const accountId = 'account-burst-' + Date.now();
+      let resolveLookup: (value: unknown) => void = () => {};
+      const getOpenhab = sinon.stub().callsFake(
+        () => new Promise((resolve) => { resolveLookup = resolve; })
+      );
+      const user = { account: accountId, getOpenhab };
+
+      // 90 assets arriving together on a cold cache, as HTTP/2 delivers them
+      const burst = Promise.all(
+        Array.from({ length: 90 }, () => runSetOpenhab(middleware, user))
+      );
+      resolveLookup({
+        _id: { toString: () => 'openhab-burst' },
+        uuid: 'test-uuid',
+        last_online: new Date(),
+      });
+      await burst;
+
+      expect(getOpenhab.calledOnce).to.be.true;
+    });
+
     it('falls back to a lookup when the user has no account', async () => {
       const middleware = createMiddleware(deps);
       const getOpenhab = sinon.stub().resolves({

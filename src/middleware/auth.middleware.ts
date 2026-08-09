@@ -139,18 +139,13 @@ export function configurePassport(authService: AuthService, logger: ILogger): vo
   // Session deserialization - fetch user from ID
   passport.deserializeUser(async (id: string, done) => {
     try {
-      const cached = userCache.get(id);
-      if (cached) {
-        done(null, cached);
-        return;
-      }
-
-      const user = await authService.findUserById(id);
-      if (user) {
+      // getOrLoad so a burst of requests on a cold cache shares one lookup
+      const user = await userCache.getOrLoad(
+        id,
         // Cast to Express.User - the Mongoose model has the openhab method
-        userCache.set(id, user as Express.User);
-      }
-      done(null, user as Express.User | null);
+        async () => (await authService.findUserById(id)) as Express.User | null
+      );
+      done(null, user);
     } catch (error) {
       logger.error('Deserialize user error:', error);
       done(error);
