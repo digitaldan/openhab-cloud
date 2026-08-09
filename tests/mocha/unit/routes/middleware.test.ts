@@ -20,6 +20,7 @@ import {
   invalidateConnectionCache,
 } from '../../../../src/routes/middleware';
 import type { MiddlewareDependencies } from '../../../../src/routes/middleware';
+import { openhabCache, invalidateOpenhabCache } from '../../../../src/lib/lookup-caches';
 
 describe('Route Middleware', () => {
   let deps: MiddlewareDependencies;
@@ -296,6 +297,178 @@ describe('Route Middleware', () => {
       expect(mockRedis.get.calledTwice).to.be.true;
     });
 
+  });
+
+  describe('openHAB Lookup Cache', () => {
+    const connectionInfo = {
+      serverAddress: 'server1.internal',
+      connectionId: 'conn-123',
+      openhabVersion: '4.1.0',
+    };
+
+    const createMockRes = () =>
+      ({
+        locals: {},
+        status: sinon.stub().returnsThis(),
+        json: sinon.stub(),
+      }) as unknown as Response;
+
+    const runSetOpenhab = (
+      middleware: ReturnType<typeof createMiddleware>,
+      user: unknown
+    ): Promise<Response> => {
+      const res = createMockRes();
+      const req = {
+        isAuthenticated: () => true,
+        user,
+      } as unknown as Request;
+
+      return new Promise<Response>((resolve) => {
+        middleware.setOpenhab(req, res, (() => resolve(res)) as NextFunction);
+      });
+    };
+
+    beforeEach(() => {
+      openhabCache.clear();
+      mockRedis.get.resolves(JSON.stringify(connectionInfo));
+    });
+
+    it('looks up the openHAB only once for repeated requests', async () => {
+      const middleware = createMiddleware(deps);
+      const accountId = 'account-' + Date.now();
+      const getOpenhab = sinon.stub().resolves({
+        _id: { toString: () => 'openhab-1' },
+        uuid: 'test-uuid',
+        last_online: new Date(),
+      });
+      const user = { account: accountId, getOpenhab };
+
+      await runSetOpenhab(middleware, user);
+      await runSetOpenhab(middleware, user);
+      await runSetOpenhab(middleware, user);
+
+      expect(getOpenhab.calledOnce).to.be.true;
+    });
+
+    it('still populates req.openhab and locals from the cache', async () => {
+      const middleware = createMiddleware(deps);
+      const accountId = 'account-locals-' + Date.now();
+      const openhab = {
+        _id: { toString: () => 'openhab-2' },
+        uuid: 'cached-uuid',
+        last_online: new Date(),
+      };
+      const user = { account: accountId, getOpenhab: sinon.stub().resolves(openhab) };
+
+      await runSetOpenhab(middleware, user);
+      const res = await runSetOpenhab(middleware, user);
+
+      expect(res.locals['openhab']).to.equal(openhab);
+      expect(res.locals['openhabstatus']).to.equal('online');
+    });
+
+    it('shares one entry between users on the same account', async () => {
+      const middleware = createMiddleware(deps);
+      const accountId = 'account-shared-' + Date.now();
+      const openhab = {
+        _id: { toString: () => 'openhab-3' },
+        uuid: 'test-uuid',
+        last_online: new Date(),
+      };
+      const firstUser = { account: accountId, getOpenhab: sinon.stub().resolves(openhab) };
+      const secondUser = { account: accountId, getOpenhab: sinon.stub().resolves(openhab) };
+
+      await runSetOpenhab(middleware, firstUser);
+      await runSetOpenhab(middleware, secondUser);
+
+      expect(secondUser.getOpenhab.called).to.be.false;
+    });
+
+    it('looks up again after the account is invalidated', async () => {
+      const middleware = createMiddleware(deps);
+      const accountId = 'account-invalidate-' + Date.now();
+      const getOpenhab = sinon.stub().resolves({
+        _id: { toString: () => 'openhab-4' },
+        uuid: 'test-uuid',
+        last_online: new Date(),
+      });
+      const user = { account: accountId, getOpenhab };
+
+      await runSetOpenhab(middleware, user);
+      invalidateOpenhabCache(accountId);
+      await runSetOpenhab(middleware, user);
+
+      expect(getOpenhab.calledTwice).to.be.true;
+    });
+
+    it('does not cache across different accounts', async () => {
+      const middleware = createMiddleware(deps);
+      const stamp = Date.now();
+      const openhab = {
+        _id: { toString: () => 'openhab-5' },
+        uuid: 'test-uuid',
+        last_online: new Date(),
+      };
+      const firstUser = { account: 'account-a-' + stamp, getOpenhab: sinon.stub().resolves(openhab) };
+      const secondUser = { account: 'account-b-' + stamp, getOpenhab: sinon.stub().resolves(openhab) };
+
+      await runSetOpenhab(middleware, firstUser);
+      await runSetOpenhab(middleware, secondUser);
+
+      expect(secondUser.getOpenhab.calledOnce).to.be.true;
+    });
+
+    it('does not cache a missing openHAB', async () => {
+      const middleware = createMiddleware(deps);
+      const accountId = 'account-missing-' + Date.now();
+      const getOpenhab = sinon.stub().resolves(null);
+      const user = { account: accountId, getOpenhab };
+
+      const res = createMockRes();
+      const req = { isAuthenticated: () => true, user } as unknown as Request;
+      middleware.setOpenhab(req, res, sinon.spy() as NextFunction);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(openhabCache.get(accountId)).to.be.undefined;
+    });
+
+    it('issues one lookup for a burst of concurrent requests', async () => {
+      const middleware = createMiddleware(deps);
+      const accountId = 'account-burst-' + Date.now();
+      let resolveLookup: (value: unknown) => void = () => {};
+      const getOpenhab = sinon.stub().callsFake(
+        () => new Promise((resolve) => { resolveLookup = resolve; })
+      );
+      const user = { account: accountId, getOpenhab };
+
+      // 90 assets arriving together on a cold cache, as HTTP/2 delivers them
+      const burst = Promise.all(
+        Array.from({ length: 90 }, () => runSetOpenhab(middleware, user))
+      );
+      resolveLookup({
+        _id: { toString: () => 'openhab-burst' },
+        uuid: 'test-uuid',
+        last_online: new Date(),
+      });
+      await burst;
+
+      expect(getOpenhab.calledOnce).to.be.true;
+    });
+
+    it('falls back to a lookup when the user has no account', async () => {
+      const middleware = createMiddleware(deps);
+      const getOpenhab = sinon.stub().resolves({
+        _id: { toString: () => 'openhab-6' },
+        uuid: 'test-uuid',
+        last_online: new Date(),
+      });
+      const user = { getOpenhab };
+
+      await runSetOpenhab(middleware, user);
+      await runSetOpenhab(middleware, user);
+
+      expect(getOpenhab.calledTwice).to.be.true;
+    });
   });
 
   describe('ensureServer', () => {

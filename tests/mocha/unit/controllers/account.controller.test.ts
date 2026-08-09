@@ -20,6 +20,7 @@ import type { UserService, PasswordResult } from '../../../../src/services/user.
 import type { OpenhabService } from '../../../../src/services/openhab.service';
 import type { ILogger } from '../../../../src/types/notification';
 import type { Request, Response } from 'express';
+import { openhabCache } from '../../../../src/lib/lookup-caches';
 
 // Mock implementations
 class MockLogger implements ILogger {
@@ -111,12 +112,15 @@ class MockUserService {
 class MockOpenhabService {
   updateCredentialsResult = { success: true };
   createResult: { success: boolean; error?: string } = { success: true };
+  /** Runs while the update is still pending, to simulate a concurrent request */
+  onUpdateCredentials: (() => void) | undefined;
 
   async updateCredentials(
     _openhabId: Types.ObjectId,
     _uuid: string,
     _secret: string
   ): Promise<{ success: boolean; error?: string }> {
+    this.onUpdateCredentials?.();
     return this.updateCredentialsResult;
   }
 
@@ -397,6 +401,48 @@ describe('AccountController', () => {
       await controller.postAccount(mockReq as Request, mockRes as Response, () => {});
 
       expect(flashStub.calledWith('error', 'UUID already exists')).to.be.true;
+    });
+
+    describe('openHAB cache invalidation', () => {
+      const accountId = new Types.ObjectId();
+
+      beforeEach(() => {
+        mockReq.user = {
+          _id: new Types.ObjectId(),
+          username: 'testuser',
+          account: accountId,
+        } as unknown as Express.User;
+        openhabCache.clear();
+      });
+
+      it('drops the cached openHAB after a successful re-key', async () => {
+        openhabCache.set(accountId.toString(), { uuid: 'old-uuid' } as never);
+
+        await controller.postAccount(mockReq as Request, mockRes as Response, () => {});
+
+        expect(openhabCache.get(accountId.toString())).to.be.undefined;
+      });
+
+      it('drops the cached openHAB after a successful registration', async () => {
+        mockReq.openhab = undefined;
+        openhabCache.set(accountId.toString(), { uuid: 'old-uuid' } as never);
+
+        await controller.postAccount(mockReq as Request, mockRes as Response, () => {});
+
+        expect(openhabCache.get(accountId.toString())).to.be.undefined;
+      });
+
+      it('clears an entry repopulated while the update was in flight', async () => {
+        // A concurrent request reads the old row and caches it again while the
+        // mutation is still pending
+        openhabService.onUpdateCredentials = () => {
+          openhabCache.set(accountId.toString(), { uuid: 'old-uuid' } as never);
+        };
+
+        await controller.postAccount(mockReq as Request, mockRes as Response, () => {});
+
+        expect(openhabCache.get(accountId.toString())).to.be.undefined;
+      });
     });
   });
 

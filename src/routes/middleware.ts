@@ -24,6 +24,7 @@ import type { PromisifiedRedisClient } from '../lib/redis';
 import type { AppLogger } from '../lib/logger';
 import type { ConnectionInfo } from '../types/connection';
 import type { IOpenhab, IWebhook } from '../types/models';
+import { openhabCache } from '../lib/lookup-caches';
 
 /**
  * Cache entry for connection info
@@ -271,8 +272,17 @@ export function createMiddleware(deps: MiddlewareDependencies): RouteMiddleware 
       return;
     }
 
-    req.user
-      .getOpenhab()
+    // Every proxied request resolves the user's openHAB, so a page pulling ~90
+    // assets would otherwise be ~90 findOne calls. Cache it per account, and
+    // share one lookup between the requests that arrive together on a miss.
+    const accountId = req.user.account?.toString();
+    const loadOpenhab = (): Promise<IOpenhab | null> => req.user!.getOpenhab();
+
+    const resolveOpenhab = accountId
+      ? openhabCache.getOrLoad(accountId, loadOpenhab)
+      : loadOpenhab();
+
+    resolveOpenhab
       .then((openhab) => {
         if (!openhab) {
           logger.warn("Can't find the openHAB of user");

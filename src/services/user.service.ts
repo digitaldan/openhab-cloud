@@ -21,6 +21,7 @@ import type {
   IEmailVerification,
 } from '../types/models';
 import type { ILogger } from '../types/notification';
+import { invalidateOpenhabCache, invalidateUserCache } from '../lib/lookup-caches';
 
 /**
  * Result of user registration
@@ -298,6 +299,8 @@ export class UserService {
         return { success: false, error: 'Failed to set new password' };
       }
 
+      invalidateUserCache(userId.toString());
+
       this.logger.info(`Password changed for user: ${userId}`);
       return { success: true };
     } catch (error) {
@@ -387,8 +390,19 @@ export class UserService {
         await this.openhabRepository.deleteByAccount(userAccount._id);
       }
 
+      // deleteByAccount removes every user on the account, so drop them all -
+      // otherwise the others keep deserializing as authenticated until the TTL
+      // expires. Collect the ids before the delete.
+      const accountUsers = await this.userRepository.findByAccount(userAccount._id);
+
       await this.userRepository.deleteByAccount(userAccount._id);
       await this.userAccountRepository.deleteById(userAccount._id);
+
+      for (const accountUser of accountUsers) {
+        invalidateUserCache(accountUser._id.toString());
+      }
+      invalidateUserCache(userId.toString());
+      invalidateOpenhabCache(userAccount._id.toString());
 
       this.logger.info(`Account deleted for: ${user.username}`);
       return { success: true };

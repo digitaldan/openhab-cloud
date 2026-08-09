@@ -16,6 +16,7 @@ import type { UserService, PasswordResult } from '../services/user.service';
 import type { OpenhabService } from '../services/openhab.service';
 import type { ILogger } from '../types/notification';
 import type { ValidatedRequest } from '../middleware/validation.middleware';
+import { invalidateOpenhabCache } from '../lib/lookup-caches';
 import type {
   LoginInput,
   RegisterInput,
@@ -244,6 +245,17 @@ export class AccountController {
     const typedReq = req as ValidatedRequest<AccountUpdateInput>;
     const { openhabuuid, openhabsecret } = typedReq.validatedBody;
 
+    // Registering or re-keying the openHAB changes what setOpenhab resolves,
+    // and the proxy emits to a room named after the uuid. Invalidate after the
+    // write lands - doing it only up front leaves a window where a concurrent
+    // request reads the old row and caches it again behind our back.
+    const accountId = req.user?.account?.toString();
+    const dropCachedOpenhab = (): void => {
+      if (accountId) {
+        invalidateOpenhabCache(accountId);
+      }
+    };
+
     if (!req.openhab) {
       // No existing openHAB - create a new one
       const result = await this.openhabService.create({
@@ -253,6 +265,7 @@ export class AccountController {
       });
 
       if (result.success) {
+        dropCachedOpenhab();
         req.flash('info', 'openHAB successfully registered');
       } else {
         req.flash('error', result.error ?? 'Failed to register openHAB');
@@ -266,6 +279,7 @@ export class AccountController {
       );
 
       if (result.success) {
+        dropCachedOpenhab();
         req.flash('info', 'openHAB settings successfully updated');
       } else {
         req.flash('error', result.error ?? 'Failed to update settings');
