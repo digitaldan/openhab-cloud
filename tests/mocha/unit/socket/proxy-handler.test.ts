@@ -29,7 +29,7 @@ describe('ProxyHandler WebSocket upgrade', () => {
   let clientSocket: { write: sinon.SinonStub; [key: string]: unknown };
   let response: { socket: unknown; headersSent: boolean; getHeader: sinon.SinonStub };
   let openhabSocket: OpenhabSocket;
-  let webSocketTracker: { add: sinon.SinonStub };
+  let webSocketTracker: { add: sinon.SinonStub; remove: sinon.SinonStub };
 
   const upgradeData: ResponseHeaderData = {
     id: requestId,
@@ -54,6 +54,7 @@ describe('ProxyHandler WebSocket upgrade', () => {
       setNoDelay: sinon.stub(),
       resume: sinon.stub(),
       on: sinon.stub(),
+      destroy: sinon.stub(),
     };
 
     response = {
@@ -74,7 +75,7 @@ describe('ProxyHandler WebSocket upgrade', () => {
       markHeadersSent: sinon.stub(),
     };
 
-    webSocketTracker = { add: sinon.stub() };
+    webSocketTracker = { add: sinon.stub(), remove: sinon.stub() };
 
     openhabSocket = {
       handshake: { uuid },
@@ -134,5 +135,18 @@ describe('ProxyHandler WebSocket upgrade', () => {
     const raw = writtenResponse();
     expect(raw).to.contain('Set-Cookie: CloudServer=evilX-Injected: yes');
     expect(raw.split('\r\n').filter((line) => line.startsWith('X-Injected'))).to.be.empty;
+  });
+
+  it('destroys the client socket when the client half-closes', () => {
+    handler.handleResponseHeader(openhabSocket, upgradeData);
+
+    const on = clientSocket['on'] as sinon.SinonStub;
+    const onEnd = on.getCalls().find((call) => call.args[0] === 'end');
+    expect(onEnd).to.exist;
+    (onEnd!.args[1] as () => void)();
+
+    expect((clientSocket['destroy'] as sinon.SinonStub).calledOnce).to.be.true;
+    expect(webSocketTracker.remove.calledOnceWith(requestId)).to.be.true;
+    expect((openhabSocket.emit as sinon.SinonStub).calledWith('cancel', { id: requestId })).to.be.true;
   });
 });

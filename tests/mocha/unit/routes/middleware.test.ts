@@ -612,6 +612,9 @@ describe('Route Middleware', () => {
       socket.on('data', (chunk: Buffer) => {
         socket.write(Buffer.concat([Buffer.from('echo:'), chunk]));
       });
+      // http.Server allows half-open sockets, so an upgraded socket stays open
+      // after 'end' and would keep mocha from exiting.
+      socket.on('end', () => socket.destroy());
     };
 
     // Front node: no openHAB connection, so ensureServer proxies onwards.

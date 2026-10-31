@@ -325,6 +325,8 @@ export class ProxyHandler {
       cleanedUp = true;
       this.webSocketTracker.remove(requestId);
       openhabSocket.emit('cancel', { id: requestId });
+      // http.Server allows half-open sockets, so 'end' alone leaves this open.
+      clientSocket.destroy();
       this.logger.info(`WebSocket proxy closed (${reason}): request ${requestId}`);
     };
 
